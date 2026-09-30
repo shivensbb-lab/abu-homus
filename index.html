@@ -28,14 +28,14 @@
     <h2>NASSAU · ANNO DOMINI 1715</h2>
     <div class="go" id="go">LOADING THE PORT…</div>
     <table>
-      <tr><td>WASD · Mouse</td><td>Move · Look</td></tr>
+      <tr><td>WASD · Mouse / Arrows</td><td>Move · Look</td></tr>
       <tr><td>Shift</td><td>Swashbuckling Sprint (auto-climbs walls &amp; rigging)</td></tr>
       <tr><td>Space</td><td>Jump · Leap of Faith (on a viewpoint) · Back-eject while climbing</td></tr>
       <tr><td>F</td><td>Synchronize at viewpoint</td></tr>
       <tr><td>LMB</td><td>Hidden blade / sword · Counter-kill after a parry</td></tr>
       <tr><td>Q / E / R</td><td>Parry left / right / high</td></tr>
       <tr><td>Ctrl · C</td><td>Walk · Drop from wall</td></tr>
-      <tr><td>V · `</td><td>Show guard view cones · Performance panel</td></tr>
+      <tr><td>V · ` · Esc</td><td>Guard view cones · Performance panel · Pause</td></tr>
     </table>
   </div>
   <script type="module">
@@ -47,9 +47,7 @@
     go.textContent = 'CLICK TO SET SAIL';
     game.start();
     title.addEventListener('click', () => game.input.requestLock());
-    document.addEventListener('pointerlockchange', () => {
-      title.classList.toggle('hidden', !!document.pointerLockElement);
-    });
+    addEventListener('inputchange', () => title.classList.toggle('hidden', game.input.active));
   </script>
 </body>
 </html>

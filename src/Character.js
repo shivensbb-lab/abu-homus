@@ -13,7 +13,7 @@ const BONES = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head', 'LeftArm', '
   'LeftUpLeg', 'LeftLeg', 'RightUpLeg', 'RightLeg'];
 
 export class CharacterFactory {
-  static async load(url = 'assets/models/Soldier.glb') {
+  static async load(url = import.meta.env.VITE_CHARACTER_URL || 'assets/models/Soldier.glb') {
     const gltf = await new GLTFLoader().loadAsync(url);
     return new CharacterFactory(gltf);
   }

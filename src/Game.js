@@ -105,9 +105,10 @@ export class Game {
     const frameMs = now - this.clock.last;
     this.clock.last = now;
     const dt = Math.min(Math.max(frameMs, 0) / 1000, MAX_FRAME_DT);
-    const paused = !this.input.locked;
+    const paused = !this.input.active;
 
     if (!paused) {
+      this.input.keyLook(dt);
       this.cam.handleMouse(this.input);
       this.clock.acc += dt;
       let steps = 0;

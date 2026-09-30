@@ -94,24 +94,35 @@ export function boxUV(geo, offset = 0) {
   return geo;
 }
 
-/** Load the HDR sky: background + PMREM environment + dominant sun direction. */
-export async function loadSky(renderer, scene, url = 'assets/hdri/sky_2k.hdr') {
-  const hdr = await new HDRLoader().loadAsync(url);
-  hdr.mapping = THREE.EquirectangularReflectionMapping;
-  scene.background = hdr;
-  scene.backgroundIntensity = 0.9;
+/** Load the sky (HDR, or an 8-bit PNG/JPG fallback): background + PMREM environment + sun direction. */
+export async function loadSky(renderer, scene, url = SKY_URL) {
+  const hdr = /\.hdr$/i.test(url);
+  const tex = hdr ? await new HDRLoader().loadAsync(url) : await new THREE.TextureLoader().loadAsync(url);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  if (!hdr) tex.colorSpace = THREE.SRGBColorSpace;
+  scene.background = tex;
+  scene.backgroundIntensity = hdr ? 0.9 : 1.0;
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromEquirectangular(hdr).texture;
-  scene.environmentIntensity = 0.75;
+  scene.environment = pmrem.fromEquirectangular(tex).texture;
+  scene.environmentIntensity = hdr ? 0.75 : 1.1;           // LDR skies carry less energy
   pmrem.dispose();
-  return findSun(hdr);
+  return findSun(tex);
 }
+
+export const SKY_URL = import.meta.env.VITE_SKY_URL || 'assets/hdri/sky_2k.hdr';
 
 /** Brightest texel of the equirect image → world-space sun direction. */
 function findSun(tex) {
-  const { data, width, height } = tex.image;
+  let { data, width, height } = tex.image;
+  if (!data) {                                    // 8-bit image: read pixels back through a canvas
+    const c = document.createElement('canvas');
+    c.width = width = tex.image.width; c.height = height = tex.image.height;
+    const g = c.getContext('2d');
+    g.drawImage(tex.image, 0, 0);
+    data = g.getImageData(0, 0, width, height).data;
+  }
   const stride = data.length / (width * height);
-  const half = tex.type === THREE.HalfFloatType;
+  const half = tex.type === THREE.HalfFloatType && !(data instanceof Uint8ClampedArray);
   const read = (i) => (half ? THREE.DataUtils.fromHalfFloat(data[i]) : data[i]);
   let best = -1, bx = 0, by = 0;
   for (let y = 0; y < height / 2; y += 2) {

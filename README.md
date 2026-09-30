@@ -8,6 +8,7 @@ A third-person action-adventure prototype in Three.js: a hooded pirate assassin 
 npm install
 npm run dev        # http://localhost:5173 — click to lock the mouse
 npm run build      # production bundle in dist/
+npm run build:web  # web-only file types (no .bin/.glb/.hdr) in dist-web/, for strict static hosts
 ```
 
 ## Architecture (`src/`, every file < 500 lines)

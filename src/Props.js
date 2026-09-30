@@ -12,6 +12,8 @@ import { TAG } from './Physics.js';
 
 const S = TAG.SOLID, L = TAG.LEDGE, R = TAG.RIGGING;
 const ROOT = 'assets/models/';
+// Web-only hosts can't serve .bin buffers: `VITE_MODEL_EXT=.gltf.json` switches to self-contained glTF JSON.
+const EXT = import.meta.env.VITE_MODEL_EXT || '.gltf';
 
 const PROPS = {
   ship_medium: { file: 'dutch_ship_medium', lodDistances: [0, 400], ship: true },
@@ -27,7 +29,7 @@ export async function loadPropKit(renderer) {
   const kit = {};
   await Promise.all(Object.entries(PROPS).map(async ([name, cfg]) => {
     try {
-      const gltf = await loader.loadAsync(`${ROOT}${cfg.file}/${cfg.file}.gltf`);
+      const gltf = await loader.loadAsync(`${ROOT}${cfg.file}/${cfg.file}${EXT}`);
       const scene = gltf.scene;
       scene.updateMatrixWorld(true);
       scene.traverse((o) => {
