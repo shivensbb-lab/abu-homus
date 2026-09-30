@@ -14,15 +14,23 @@ npm run build      # production bundle in dist/
 
 | File | Responsibility |
 |---|---|
-| `Game.js` | Engine core: WebGL renderer (ACES, shadows), clamped-delta rAF loop, fixed 120 Hz simulation, dynamic resolution scaling to hold 60 FPS |
+| `Game.js` | Engine core: renderer, clamped-delta rAF loop, fixed 120 Hz simulation, dynamic resolution + post-FX quality scaling to hold 60 FPS |
 | `Camera.js` | Over-the-shoulder follow cam: mouse yaw/pitch, damped rear-vector tracking, wall collision, sprint/leap FOV kick, sync orbit |
-| `Physics.js` | Spatial-hashed AABB world, tagged colliders (`solid`, `ledge`, `rigging`, `haystack`, `hide`, `sync`, `water`), raycasts, line of sight, cylinder resolution |
-| `Player.js` | WASD movement, Swashbuckling Sprint + stamina, ray-based climb / mantle / vault / wall-jump, synchronise, Leap of Faith, swimming, combat input |
-| `Enemy.js` | Redcoat guards: patrols, 3D view frustum (90° FOV + LOS), Detection Gauge, alerts, musket fire; `EnemyDirector` runs directional parry/counter combat, assassinations |
-| `World.js` | Sky + IBL, reflective ocean, procedural port layout, chunk streaming (5×5 around player), chunk frustum culling, `THREE.LOD` swapping |
-| `Assets.js` | Material library (auto-loads textures from `public/assets/textures/<name>.png`, procedural fallback) and the modular 3-LOD asset kit |
-| `HUD.js` | Health/stamina, detection diamonds, parry telegraph, prompts, banners, desync screen, perf panel; skinnable from `public/assets/ui/` |
-| `Input.js` | Keyboard + pointer-lock mouse with per-frame edge events |
+| `Physics.js` | Spatial-hashed AABB world, tagged colliders (`solid`, `ledge`, `rigging`, `haystack`, `hide`, `sync`, `water`), raycasts, line of sight |
+| `Player.js` | Movement, Swashbuckling Sprint + stamina, ray-based climb / mantle / vault / wall-jump, sync, Leap of Faith, swimming, combat input |
+| `Enemy.js` | Redcoat guards: patrols, 3D view frustum (90° FOV + LOS), Detection Gauge, alerts, musket fire, directional parry/counter combat |
+| `Character.js` | Skinned Mixamo-rig characters: blended Idle/Walk/Run clips + procedural bone layers (climb, dive, sword, parry, aim, death) |
+| `World.js` | HDR-lit environment, reflective ocean, jungle hills, port layout, chunk streaming, frustum culling, per-chunk static batching (HLOD) |
+| `Architecture.js` | Procedural colonial buildings (quoins, shutters, balconies, clay-tile gable roofs), bell towers, fort walls, piers, palms, stalls |
+| `Props.js` | Scanned glTF props (Dutch ships, cannon, barrels, crates, lanterns) with colliders generated from the ship hull and rigging |
+| `Materials.js` | Scanned PBR material sets with world-scale UVs; HDR sky loader that derives the sun direction from the image |
+| `PostFX.js` | MSAA → GTAO ambient occlusion → bloom → ACES output → colour grade + vignette |
+| `HUD.js` · `Input.js` | Cinematic HUD (skinnable from `public/assets/ui/`) · keyboard + pointer-lock mouse |
+
+## Assets & licences
+
+- Textures, HDRI sky, ships, cannon, barrels, crates, lantern: [Poly Haven](https://polyhaven.com), **CC0**.
+- Character: `Soldier.glb` from the three.js examples (Mixamo rig and animations). It is a **stand-in**: a modern armoured soldier, not an 18th-century assassin. Replace `public/assets/models/Soldier.glb` with any Mixamo-rigged character that has `Idle`, `Walk` and `Run` clips. The procedural climb, combat and dive poses work with any Mixamo rig.
 
 ## Controls
 
@@ -30,6 +38,6 @@ WASD + mouse · **Shift** sprint (auto-climb) · **Space** jump / Leap of Faith 
 
 ## Custom art
 
-Drop PNGs (e.g. from SpriteCook) into `public/assets/textures/` named `stone`, `plaster`, `terracotta`, `wood`, `sand`, `cobble`, `sail`, `hay`, `leaf`, `rope`. They hot-swap over the procedural textures. HUD skins go in `public/assets/ui/` (`vitals_frame.png`, `health_fill.png`, `stamina_fill.png`, `emblem.png`, `parry_ring.png`).
+To swap materials, replace the `<name>_diff/_nor/_arm.jpg` sets in `public/assets/pbr/`. HUD skins (e.g. SpriteCook art) go in `public/assets/ui/`: `vitals_frame.png`, `health_fill.png`, `stamina_fill.png`, `emblem.png`, `parry_ring.png`.
 
 Blender asset import is not wired up yet. It will plug into `World.registerModules()` / `World.setLayout()`.

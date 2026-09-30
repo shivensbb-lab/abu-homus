@@ -16,11 +16,12 @@ const DIRS = ['left', 'right', 'high'];
 const _to = new THREE.Vector3();
 
 export class Guard {
-  constructor(scene, physics, route, index) {
+  constructor(scene, physics, route, index, character) {
     this.physics = physics;
     this.route = route;
     this.index = index;
-    this.mesh = buildRedcoat();
+    this.character = character;
+    this.mesh = character.root;
     this.cone = buildViewCone();
     this.mesh.add(this.cone);
     scene.add(this.mesh);
@@ -71,7 +72,7 @@ export class Guard {
 
   // ---------------------------------------------------------------- update
   update(dt, player, director) {
-    if (this.dead) return this._animateDeath(dt);
+    if (this.dead) return;
     const distToPlayer = this.distanceTo(player.pos);
     if (distToPlayer > SLEEP_DISTANCE) { this.mesh.visible = false; return; }
     this.mesh.visible = true;
@@ -117,7 +118,6 @@ export class Guard {
         this._combat(dt, player, director, distToPlayer);
         break;
     }
-    this._animate(dt);
   }
 
   _combat(dt, player, director, dist) {
@@ -213,27 +213,30 @@ export class Guard {
     this.cone.visible = false;
   }
 
-  _animateDeath(dt) {
-    this._deathT = Math.min(1, this._deathT + dt * 2.2);
-    this.mesh.rotation.x = -this._deathT * Math.PI / 2;
-    this.mesh.position.y = this.pos.y + 0.15 * this._deathT;
-  }
-
-  _animate(dt) {
-    const m = this.mesh, u = m.userData;
+  /** Per render frame: skinned animation, death fall and the view-cone tint. */
+  animate(dt) {
+    const m = this.mesh;
+    if (!m.visible) return;
     m.position.copy(this.pos);
     m.rotation.y = this.facing;
+    if (this.dead) {
+      this._deathT = Math.min(1, this._deathT + dt * 2.2);
+      m.rotation.x = -this._deathT * Math.PI / 2;
+      m.position.y += 0.15 * this._deathT;
+      if (this._deathT < 1) this.character.update(dt, { state: 'dead', speed: 0 });
+      return;
+    }
     const speed = Math.hypot(this.vel.x, this.vel.z);
     this._anim += dt * speed * 2.2;
-    const s = Math.sin(this._anim) * Math.min(0.8, speed * 0.18);
-    u.legL.rotation.x = s; u.legR.rotation.x = -s;
-    u.armL.rotation.x = -s * 0.7;
     const atk = this._attackPose;
-    u.armR.rotation.set(atk ? atk.x : s * 0.7, 0, atk ? atk.z : 0);
-    u.musket.visible = this.musket.aim > 0;
-    u.sword.visible = this.state === 'combat' && this.musket.aim === 0;
-    if (this.stagger > 0) m.rotation.x = -0.25; else m.rotation.x = 0;
-    // View cone colour mirrors the detection gauge
+    m.rotation.x += ((this.stagger > 0 ? -0.2 : 0) - m.rotation.x) * (1 - Math.exp(-14 * dt));
+    this.character.update(dt, {
+      speed, state: 'ground', phase: this._anim,
+      parry: atk && atk.p < 0.85 ? atk.dir : null,                 // telegraph: blade raised on the strike side
+      swing: atk && atk.p >= 0.85 ? (atk.p - 0.85) / 0.15 : 0,
+      aim: Math.min(1, this.musket.aim * 2),
+      weapon: this.state === 'combat' && this.musket.aim === 0,
+    });
     const c = this.cone.material;
     c.color.setRGB(1, 1 - this.detection * 0.7, 1 - this.detection);
     c.opacity = this.state === 'combat' ? 0.04 : 0.05 + this.detection * 0.12;
@@ -244,8 +247,8 @@ Guard.showCones = false;
 
 // ==========================================================================
 export class EnemyDirector {
-  constructor({ scene, physics, hud, cam }) {
-    Object.assign(this, { scene, physics, hud, cam });
+  constructor({ scene, physics, hud, cam, characters }) {
+    Object.assign(this, { scene, physics, hud, cam, characters });
     this.guards = [];
     this.attacker = null;
     this.attack = null;           // { guard, dir, t, windup, window, early }
@@ -256,14 +259,18 @@ export class EnemyDirector {
 
   spawn(routes) {
     routes.forEach((route, i) => {
-      const g = new Guard(this.scene, this.physics, route, i);
+      const g = new Guard(this.scene, this.physics, route, i, this._redcoat());
       this.guards.push(g);
       if (route.length > 1 && i % 3 === 0) {           // a second guard on busy routes
-        const g2 = new Guard(this.scene, this.physics, [...route].reverse(), i + 100);
+        const g2 = new Guard(this.scene, this.physics, [...route].reverse(), i + 100, this._redcoat());
         this.guards.push(g2);
       }
     });
   }
+
+  _redcoat() { return this.characters.create({ tint: 0xd8483a, outfit: 'guard' }); }
+
+  animate(dt) { for (const g of this.guards) g.animate(dt); }
 
   reset() {
     for (const g of this.guards) g.reset();
@@ -300,7 +307,7 @@ export class EnemyDirector {
       if (g.dead || g.stagger > 0 || player.state === 'dead') return this._endAttack(0.5);
       a.t += dt;
       const p = Math.min(1, a.t / a.windup);
-      g._attackPose = a.dir === 'high' ? { x: -2.8 + p * 0.3, z: 0 } : { x: -1.4, z: (a.dir === 'left' ? 1 : -1) * (0.4 + p * 0.9) };
+      g._attackPose = { dir: a.dir, p };
       this.threat = { dir: a.dir, progress: p, inWindow: a.t >= a.windup - a.window, guard: g };
       if (a.t >= a.windup) {
         if (g.distanceTo(player.pos) < 3.2 && player.state !== 'dead') { player.takeDamage(18); this.hud.notify('Hit!', 0.6); }
@@ -407,30 +414,6 @@ export class EnemyDirector {
 }
 
 // ------------------------------------------------------------------- meshes
-function buildRedcoat() {
-  const red = new THREE.MeshStandardMaterial({ color: 0x9b1c1c, roughness: 0.75 });
-  const white = new THREE.MeshStandardMaterial({ color: 0xe8e2d2, roughness: 0.85 });
-  const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0xd8a888, roughness: 0.6 });
-  const wood = new THREE.MeshStandardMaterial({ color: 0x4a2e18, roughness: 0.7 });
-  const steel = new THREE.MeshStandardMaterial({ color: 0xc8ced4, metalness: 0.9, roughness: 0.3 });
-  const root = new THREE.Group();
-  const add = (p, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; p.add(m); return m; };
-  const limb = (x, y, len, w, mat) => { const g = new THREE.Group(); g.position.set(x, y, 0); add(g, new THREE.BoxGeometry(w, len, w), mat, 0, -len / 2, 0); root.add(g); return g; };
-  add(root, new THREE.CylinderGeometry(0.27, 0.36, 0.85, 10), red, 0, 1.12, 0);
-  const b1 = add(root, new THREE.BoxGeometry(0.06, 0.9, 0.04), white, 0, 1.2, 0.29); b1.rotation.z = 0.6;
-  const b2 = add(root, new THREE.BoxGeometry(0.06, 0.9, 0.04), white, 0, 1.2, 0.3); b2.rotation.z = -0.6;
-  add(root, new THREE.SphereGeometry(0.15, 12, 10), skin, 0, 1.68, 0);
-  add(root, new THREE.CylinderGeometry(0.3, 0.32, 0.12, 3), black, 0, 1.83, 0).rotation.y = Math.PI;   // tricorn
-  const armL = limb(-0.35, 1.5, 0.62, 0.12, red), armR = limb(0.35, 1.5, 0.62, 0.12, red);
-  const legL = limb(-0.13, 0.75, 0.75, 0.15, white), legR = limb(0.13, 0.75, 0.75, 0.15, white);
-  const sword = add(armR, new THREE.BoxGeometry(0.03, 0.04, 0.8), steel, 0, -0.62, 0.35);
-  const musket = add(armR, new THREE.BoxGeometry(0.06, 0.06, 1.4), wood, 0, -0.55, 0.5);
-  add(root, new THREE.BoxGeometry(0.05, 1.3, 0.05), wood, 0.12, 1.15, -0.3).rotation.z = 0.3;       // slung musket
-  root.userData = { armL, armR, legL, legR, sword, musket };
-  return root;
-}
-
 /** Visualised view frustum: apex at the eye, opening along +Z for VIEW_RANGE. */
 function buildViewCone() {
   const radius = Math.tan(HALF_FOV_H) * VIEW_RANGE;

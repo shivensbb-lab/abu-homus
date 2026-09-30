@@ -41,9 +41,10 @@
   <script type="module">
     import { Game } from './src/Game.js';
     const title = document.getElementById('title');
-    const game = await new Game(document.body).init();
+    const go = document.getElementById('go');
+    const game = await new Game(document.body).init((m) => { go.textContent = m.toUpperCase() + '…'; });
     window.game = game;
-    document.getElementById('go').textContent = 'CLICK TO SET SAIL';
+    go.textContent = 'CLICK TO SET SAIL';
     game.start();
     title.addEventListener('click', () => game.input.requestLock());
     document.addEventListener('pointerlockchange', () => {

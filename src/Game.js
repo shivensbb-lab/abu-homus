@@ -8,7 +8,11 @@ import * as THREE from 'three';
 import { Physics } from './Physics.js';
 import { Input } from './Input.js';
 import { FollowCamera } from './Camera.js';
-import { MaterialLibrary, buildModuleKit } from './Assets.js';
+import { MaterialLibrary, loadSky } from './Materials.js';
+import { buildArchitectureKit } from './Architecture.js';
+import { loadPropKit } from './Props.js';
+import { CharacterFactory } from './Character.js';
+import { PostFX } from './PostFX.js';
 import { World } from './World.js';
 import { Player } from './Player.js';
 import { EnemyDirector, Guard } from './Enemy.js';
@@ -28,7 +32,7 @@ export class Game {
     this.running = false;
   }
 
-  async init() {
+  async init(progress = () => {}) {
     // ---------------------------------------------------------- renderer
     const r = this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.maxScale = Math.min(devicePixelRatio, 2);
@@ -37,7 +41,8 @@ export class Game {
     r.setSize(innerWidth, innerHeight);
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.ACESFilmicToneMapping;
-    r.toneMappingExposure = 0.72;
+    r.toneMappingExposure = 0.85;
+    r.info.autoReset = false;               // count every pass of the frame, not just the last one
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
     this.container.appendChild(r.domElement);
@@ -50,21 +55,32 @@ export class Game {
     this.materials = new MaterialLibrary(r);
     this.cam = new FollowCamera(innerWidth / innerHeight, this.physics);
 
+    progress('Raising the sky');
+    const sunDir = await loadSky(r, this.scene);
     this.world = new World({ scene: this.scene, physics: this.physics, renderer: r, materials: this.materials });
-    this.world.registerModules(buildModuleKit(this.materials));
+    this.world.buildEnvironment(sunDir);
+    progress('Building Nassau');
+    this.world.registerModules(buildArchitectureKit(this.materials));
+    progress('Mooring the fleet');
+    const [props, characters] = await Promise.all([loadPropKit(r), CharacterFactory.load()]);
+    this.world.registerModules(props);
     this.world.generateProceduralPort();
     this.world.preload(this.world.spawn);
+    await this.materials.ready();
 
-    this.player = new Player({ scene: this.scene, physics: this.physics, world: this.world, hud: this.hud, cam: this.cam });
-    this.director = new EnemyDirector({ scene: this.scene, physics: this.physics, hud: this.hud, cam: this.cam });
+    progress('Mustering the Redcoats');
+    this.player = new Player({ scene: this.scene, physics: this.physics, world: this.world, hud: this.hud, cam: this.cam,
+      character: characters.create({ tint: 0x3b4150, outfit: 'assassin' }) });
+    this.director = new EnemyDirector({ scene: this.scene, physics: this.physics, hud: this.hud, cam: this.cam, characters });
     this.director.spawn(this.world.patrols);
     this.player.director = this.director;
     this.cam.pivot.copy(this.player.pos);
+    this.post = new PostFX(r, this.scene, this.cam.camera);
 
     // Pre-compile every shader variant so the first seconds of footage don't stutter.
     this.world.update(0, this.player.pos, this.cam.camera, 0);
     this.cam.update(1 / 60, this.player.pos);
-    r.compile(this.scene, this.cam.camera);
+    await r.compileAsync(this.scene, this.cam.camera);
 
     addEventListener('resize', () => this._resize());
     addEventListener('keydown', (e) => {
@@ -110,7 +126,11 @@ export class Game {
     const p = this.player;
     this.world.update(dt, p.pos, this.cam.camera, this.clock.time);
     this.cam.update(dt, p.pos, { sprinting: p.sprinting, leaping: p.state === 'leap', climbing: p.state === 'climb' });
-    this.renderer.render(this.scene, this.cam.camera);
+    this.player.animate(dt);
+    this.director.animate(dt);
+    this.post.setDamage(Math.max(0, 1 - this.player.health / 60));
+    this.renderer.info.reset();
+    this.post.render(dt);
 
     this._updatePerf(frameMs, dt);
     this.hud.update(dt, { player: p, director: this.director, camera: this.cam.camera, perf: this.perf });
@@ -135,18 +155,28 @@ export class Game {
     if (this._emaMs > TARGET_MS * 1.12) { this._slowT += dt; this._fastT = 0; }
     else if (this._emaMs < TARGET_MS * 0.8) { this._fastT += dt; this._slowT = 0; }
     else { this._slowT = 0; this._fastT = 0; }
-    if (this._slowT > 1 && this.resScale > 0.6) { this._setScale(this.resScale - 0.1); this._slowT = 0; }
-    if (this._fastT > 3 && this.resScale < this.maxScale) { this._setScale(this.resScale + 0.05); this._fastT = 0; }
+    if (this._slowT > 1) {
+      if (this.resScale > 0.7) this._setScale(this.resScale - 0.1);
+      else if (this.post.quality > 0) this.post.setQuality(this.post.quality - 1);   // shed AO, then bloom
+      this._slowT = 0;
+    }
+    if (this._fastT > 3) {
+      if (this.post.quality < 2) this.post.setQuality(this.post.quality + 1);
+      else if (this.resScale < this.maxScale) this._setScale(this.resScale + 0.05);
+      this._fastT = 0;
+    }
   }
 
   _setScale(s) {
     this.resScale = THREE.MathUtils.clamp(s, 0.6, this.maxScale);
     this.renderer.setPixelRatio(this.resScale);
     this.renderer.setSize(innerWidth, innerHeight);
+    this.post.setSize(innerWidth, innerHeight, this.resScale);
   }
 
   _resize() {
     this.cam.resize(innerWidth / innerHeight);
     this.renderer.setSize(innerWidth, innerHeight);
+    this.post.setSize(innerWidth, innerHeight, this.resScale);
   }
 }

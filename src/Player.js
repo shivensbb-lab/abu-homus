@@ -13,8 +13,8 @@ const JUMP_V = 7.2;
 const STAMINA_DRAIN = 26, STAMINA_REGEN = 20, REGEN_DELAY = 0.7;
 
 export class Player {
-  constructor({ scene, physics, world, hud, cam }) {
-    Object.assign(this, { scene, physics, world, hud, cam });
+  constructor({ scene, physics, world, hud, cam, character }) {
+    Object.assign(this, { scene, physics, world, hud, cam, character });
     this.director = null;               // set by Game (EnemyDirector)
     this.radius = 0.38; this.height = 1.8;
     this.pos = world.spawn.clone();
@@ -29,7 +29,7 @@ export class Player {
     this._regrab = 0; this._deadTimer = 0; this._anim = 0; this._attackCd = 0;
     this.respawnPoint = world.spawn.clone();
     this.synced = new Set();
-    this.mesh = buildAssassin();
+    this.mesh = character.root;
     scene.add(this.mesh);
   }
 
@@ -62,7 +62,7 @@ export class Player {
     this.hidden = !this.sprinting && this.state !== 'climb' &&
       !!this.physics.overlapsTag(this.pos, this.radius, this.height * 0.8, TAG.HIDE);
     this._prompts();
-    this._animate(dt, axes);
+    this._axes = axes;
   }
 
   _updateStamina(dt, input, axes) {
@@ -292,9 +292,11 @@ export class Player {
       this._attackCd = 0.45; this._swing = 0.3;
       this.director.playerAttack(this);
     }
-    if (input.wasPressed('KeyQ')) this.director.playerParry(this, 'left');
-    if (input.wasPressed('KeyE')) this.director.playerParry(this, 'right');
-    if (input.wasPressed('KeyR')) this.director.playerParry(this, 'high');
+    for (const [key, dir] of [['KeyQ', 'left'], ['KeyE', 'right'], ['KeyR', 'high']]) {
+      if (!input.wasPressed(key)) continue;
+      this._parryDir = dir; this._parryPose = 0.35;
+      this.director.playerParry(this, dir);
+    }
   }
 
   takeDamage(amount) {
@@ -330,54 +332,29 @@ export class Player {
   }
 
   // ----------------------------------------------------------- animation
-  _animate(dt, axes) {
-    const m = this.mesh, parts = m.userData;
+  /** Per render frame (not per physics step). */
+  animate(dt) {
+    const axes = this._axes || { active: false };
+    const m = this.mesh;
     m.position.copy(this.pos);
     m.rotation.y = this.facing;
     const flatSpeed = Math.hypot(this.vel.x, this.vel.z);
-    this._anim += dt * (this.state === 'climb' ? (axes.active ? 7 : 0) : flatSpeed * 1.7);
-    const s = Math.sin(this._anim);
-    let legA = 0, armA = 0, armLift = 0, pitch = 0;
-    if (this.state === 'ground') { legA = s * Math.min(0.9, flatSpeed * 0.09); armA = -legA * 0.8; pitch = this.sprinting ? 0.18 : 0; }
-    else if (this.state === 'air') { legA = 0.4; armA = -0.6; }
-    else if (this.state === 'climb') { armLift = 2.6 + s * 0.35; legA = -s * 0.5; }
-    else if (this.state === 'mantle') { armLift = 2.2; legA = 0.6; }
-    else if (this.state === 'leap') { const t = this.leap.t; pitch = THREE.MathUtils.lerp(0.1, Math.PI * 0.55, Math.min(1, t * 1.6)); armLift = 1.4; }
-    else if (this.state === 'swim') { pitch = 1.1; armA = s * 1.2; legA = s * 0.4; }
-    else if (this.state === 'dead') { pitch = -1.3; }
-    if (this._swing > 0) { this._swing -= dt; parts.armR.rotation.x = -2.2 + (0.3 - this._swing) * 8; }
-    else parts.armR.rotation.x = armLift ? -armLift : armA;
-    parts.legL.rotation.x = legA; parts.legR.rotation.x = -legA;
-    parts.armL.rotation.x = armLift ? -armLift : -armA;
-    parts.body.rotation.x = pitch;
-    parts.body.position.y = this.state === 'swim' ? 0.8 : 0;
-    parts.blade.visible = this._swing > 0 || !!this.director?.threat;
+    if (this.state === 'climb') this._anim += dt * (axes.active ? 6 : 0);
+    else this._anim += dt * flatSpeed * 1.7;
+    let pitch = 0, lift = 0;
+    if (this.state === 'leap') pitch = THREE.MathUtils.lerp(0.1, Math.PI * 0.5, Math.min(1, this.leap.t * 1.5));
+    else if (this.state === 'swim') { pitch = 1.2; lift = 0.9; }
+    else if (this.state === 'dead') pitch = -Math.min(1.45, (2.6 - this._deadTimer) * 3);
+    m.rotation.x += (pitch - m.rotation.x) * (1 - Math.exp(-12 * dt));
+    m.position.y += lift;
+    if (this._swing > 0) this._swing -= dt;
+    const threat = this.director?.threat;
+    this.character.update(dt, {
+      speed: this.state === 'swim' ? 2 : flatSpeed, state: this.state, phase: this._anim,
+      swing: this._swing > 0 ? 1 - this._swing / 0.3 : 0,
+      parry: this._parryPose > 0 ? this._parryDir : null,
+      leap: this.leap?.t ?? 0, weapon: this._swing > 0 || !!threat || this.director?.inCombat,
+    });
+    this._parryPose = Math.max(0, (this._parryPose || 0) - dt);
   }
-}
-
-/** Hooded pirate-assassin built from primitives (swap for a Blender GLB rig later). */
-function buildAssassin() {
-  const coat = new THREE.MeshStandardMaterial({ color: 0x1d2433, roughness: 0.8 });
-  const hood = new THREE.MeshStandardMaterial({ color: 0xd9d2c0, roughness: 0.9 });
-  const sash = new THREE.MeshStandardMaterial({ color: 0x8a1414, roughness: 0.7 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0x9c6b4a, roughness: 0.6 });
-  const leather = new THREE.MeshStandardMaterial({ color: 0x3a2716, roughness: 0.7 });
-  const steel = new THREE.MeshStandardMaterial({ color: 0xcfd6dd, metalness: 0.9, roughness: 0.25 });
-  const root = new THREE.Group(), body = new THREE.Group();
-  const add = (parent, geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
-  const limb = (x, y, len, w, mat) => { const pivot = new THREE.Group(); pivot.position.set(x, y, 0); add(pivot, new THREE.BoxGeometry(w, len, w), mat, 0, -len / 2, 0); return pivot; };
-
-  add(body, new THREE.CylinderGeometry(0.26, 0.42, 0.95, 10), coat, 0, 1.0, 0);          // coat skirt + torso
-  add(body, new THREE.CylinderGeometry(0.3, 0.27, 0.5, 10), hood, 0, 1.35, 0);           // shirt / vest
-  add(body, new THREE.TorusGeometry(0.27, 0.05, 6, 16), sash, 0, 1.08, 0).rotation.x = Math.PI / 2;
-  add(body, new THREE.SphereGeometry(0.15, 12, 10), skin, 0, 1.68, 0.02);
-  const hoodMesh = add(body, new THREE.ConeGeometry(0.22, 0.42, 12, 1, true), hood, 0, 1.78, -0.03);
-  hoodMesh.rotation.x = -0.25;
-  const armL = limb(-0.36, 1.5, 0.62, 0.13, coat), armR = limb(0.36, 1.5, 0.62, 0.13, coat);
-  const blade = add(armR, new THREE.BoxGeometry(0.03, 0.05, 0.55), steel, 0, -0.62, 0.25);
-  const legL = limb(-0.13, 0.85, 0.85, 0.16, leather), legR = limb(0.13, 0.85, 0.85, 0.16, leather);
-  body.add(armL, armR, legL, legR);
-  root.add(body);
-  root.userData = { body, armL, armR, legL, legR, blade };
-  return root;
 }
