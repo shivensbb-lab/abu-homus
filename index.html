@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Black Flag Creed</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&display=swap" rel="stylesheet" />
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #05070a; }
+    canvas { display: block; }
+    #title { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at center, #0b0f16cc 0%, #000000ee 80%); color: #f3ead7; z-index: 10; cursor: pointer;
+      font-family: 'IM Fell English SC', Georgia, serif; text-align: center; transition: opacity .4s; }
+    #title h1 { font-size: clamp(40px, 7vw, 96px); letter-spacing: .3em; margin: 0; font-weight: normal; }
+    #title h2 { font-size: clamp(14px, 1.6vw, 22px); letter-spacing: .5em; color: #c9a55a; margin: 8px 0 34px; font-weight: normal; }
+    #title .go { font-size: 22px; letter-spacing: .3em; animation: pulse 2s infinite; }
+    #title table { margin-top: 34px; font-size: 15px; letter-spacing: .08em; border-spacing: 22px 5px; opacity: .85; }
+    #title td:first-child { text-align: right; color: #c9a55a; }
+    #title td:last-child { text-align: left; }
+    #title.hidden { opacity: 0; pointer-events: none; }
+    @keyframes pulse { 50% { opacity: .35; } }
+  </style>
+</head>
+<body>
+  <div id="title">
+    <h1>BLACK FLAG CREED</h1>
+    <h2>NASSAU · ANNO DOMINI 1715</h2>
+    <div class="go" id="go">LOADING THE PORT…</div>
+    <table>
+      <tr><td>WASD · Mouse</td><td>Move · Look</td></tr>
+      <tr><td>Shift</td><td>Swashbuckling Sprint (auto-climbs walls &amp; rigging)</td></tr>
+      <tr><td>Space</td><td>Jump · Leap of Faith (on a viewpoint) · Back-eject while climbing</td></tr>
+      <tr><td>F</td><td>Synchronize at viewpoint</td></tr>
+      <tr><td>LMB</td><td>Hidden blade / sword · Counter-kill after a parry</td></tr>
+      <tr><td>Q / E / R</td><td>Parry left / right / high</td></tr>
+      <tr><td>Ctrl · C</td><td>Walk · Drop from wall</td></tr>
+      <tr><td>V · `</td><td>Show guard view cones · Performance panel</td></tr>
+    </table>
+  </div>
+  <script type="module">
+    import { Game } from './src/Game.js';
+    const title = document.getElementById('title');
+    const game = await new Game(document.body).init();
+    window.game = game;
+    document.getElementById('go').textContent = 'CLICK TO SET SAIL';
+    game.start();
+    title.addEventListener('click', () => game.input.requestLock());
+    document.addEventListener('pointerlockchange', () => {
+      title.classList.toggle('hidden', !!document.pointerLockElement);
+    });
+  </script>
+</body>
+</html>

@@ -64,7 +64,7 @@ export class World {
     sc.left = -60; sc.right = 60; sc.top = 60; sc.bottom = -60; sc.near = 1; sc.far = 260;
     this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.04;
     scene.add(this.sun, this.sun.target);
-    scene.add(new THREE.HemisphereLight(0xcfe6ff, 0x8a7350, 0.6));
+    scene.add(new THREE.HemisphereLight(0xcfe6ff, 0x6a5238, 0.4));
 
     // Ocean — planar-reflection water with a procedurally generated tileable normal map.
     this.water = new Water(new THREE.PlaneGeometry(3000, 3000), {
@@ -154,7 +154,7 @@ export class World {
     for (const px of [-40, 80]) patrols.push([[px, COAST_Z + 12], [px, COAST_Z + 58]]);
     patrols.push([[-40, -120], [40, -120], [40, -40], [-40, -40]], [[-160, -180], [160, -180]]);
 
-    this.setLayout({ placements: P, patrols: patrols.map((r) => r.map(([x, z]) => new THREE.Vector3(x, 0, z))), spawn: new THREE.Vector3(-10, 0.1, 30) });
+    this.setLayout({ placements: P, patrols: patrols.map((r) => r.map(([x, z]) => new THREE.Vector3(x, z > COAST_Z ? 1.05 : 0, z))), spawn: new THREE.Vector3(-10, 0.1, 30) });
   }
 
   // ------------------------------------------------------------- streaming
